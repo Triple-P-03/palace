@@ -97,6 +97,7 @@ export function createLessonFromGenerated(
     quizQuestions,
     sources: generated.sources ?? [],
     createdAt: new Date().toISOString(),
+    status: "pending",
     demo,
   };
 }

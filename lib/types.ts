@@ -19,6 +19,8 @@ export type QuizQuestion = {
   answer: string;
 };
 
+export type LessonStatus = "pending" | "memorized" | "skipped";
+
 export type Lesson = {
   id: string;
   title: string;
@@ -29,6 +31,8 @@ export type Lesson = {
   quizQuestions: QuizQuestion[];
   sources: string[];
   createdAt: string;
+  status: LessonStatus;
+  statusUpdatedAt?: string;
   demo?: boolean;
 };
 

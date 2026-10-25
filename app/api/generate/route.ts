@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       const lesson = createDemoLesson(parsed.topic, parsed.routeLocations);
       const database = await getDatabase();
       if (database) {
-        await database.collection("lessons").insertOne(lesson);
+        await database.collection("lessons").replaceOne({ id: lesson.id }, lesson, { upsert: true });
       }
       return NextResponse.json({ lesson, demo: true, message: "Add GEMINI_API_KEY to generate new Gemini lessons." });
     }
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     const database = await getDatabase();
 
     if (database) {
-      await database.collection("lessons").insertOne(lesson);
+      await database.collection("lessons").replaceOne({ id: lesson.id }, lesson, { upsert: true });
     }
 
     return NextResponse.json({ lesson, demo: false });

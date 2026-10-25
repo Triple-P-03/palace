@@ -224,3 +224,17 @@ Lesson generation failed Error [ApiError]: {"error":{"code":404,"message":"This 
  POST /api/topics 200 in 70ms (next.js: 1.3ms, application-code: 68ms)
  GET / 200 in 55ms (next.js: 1.4ms, application-code: 53ms)
  HEAD / 200 in 62ms (next.js: 1.5ms, application-code: 61ms)
+✓ Compiled in 248ms
+ GET / 200 in 205ms (next.js: 23ms, application-code: 182ms)
+ GET / 200 in 191ms (next.js: 47ms, application-code: 144ms)
+ GET / 200 in 132ms (next.js: 76ms, application-code: 56ms)
+✓ Compiled in 127ms
+✓ Compiled in 67ms
+✓ Compiled in 165ms
+ GET /api/lessons 200 in 1094ms (next.js: 567ms, application-code: 527ms)
+ GET /api/lessons 200 in 101ms (next.js: 9ms, application-code: 92ms)
+ PATCH /api/lessons/fb96cdda-100b-408f-97cd-3deddabdb4e1 200 in 3.8s (next.js: 3.6s, application-code: 193ms)
+ GET /api/lessons 200 in 96ms (next.js: 2ms, application-code: 94ms)
+ PATCH /api/lessons/fb96cdda-100b-408f-97cd-3deddabdb4e1 200 in 134ms (next.js: 14ms, application-code: 121ms)
+ GET /api/lessons 200 in 73ms (next.js: 2ms, application-code: 71ms)
+ POST /api/lessons 200 in 82ms (next.js: 1.7ms, application-code: 80ms)

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { compareRecall } from "@/lib/recall";
-import type { Lesson, RecallResult, Topic } from "@/lib/types";
+import type { Lesson, LessonStatus, RecallResult, Topic } from "@/lib/types";
 
 const defaultTopics: Topic[] = [
   { id: "astronomy", name: "Astronomy & space", enabled: true },
@@ -12,6 +12,10 @@ const defaultTopics: Topic[] = [
 ];
 
 const defaultRoute = ["Entrance", "Threshold", "Doorway", "Desk / table", "Window"];
+
+function normalizeLesson(lesson: Lesson): Lesson {
+  return { ...lesson, status: lesson.status ?? "pending" };
+}
 
 type View = "home" | "topics" | "library";
 
@@ -39,9 +43,10 @@ export default function Home() {
       if (savedTopics) setTopics(JSON.parse(savedTopics));
       if (savedRoute) setRoute(JSON.parse(savedRoute));
       if (savedLessons) {
-        const parsedLessons = JSON.parse(savedLessons) as Lesson[];
+        const parsedLessons = (JSON.parse(savedLessons) as Lesson[]).map(normalizeLesson);
         setLessons(parsedLessons);
         setActiveLesson(parsedLessons[0] ?? null);
+        void Promise.all(parsedLessons.map((lesson) => persistLesson(lesson))).catch(() => undefined);
       }
     }, 0);
   }, []);
@@ -56,7 +61,7 @@ export default function Home() {
           fetch("/api/lessons"),
         ]);
         const remoteTopics = (await topicsResponse.json()).topics as Topic[];
-        const remoteLessons = (await lessonsResponse.json()).lessons as Lesson[];
+        const remoteLessons = ((await lessonsResponse.json()).lessons as Lesson[]).map(normalizeLesson);
         if (cancelled) return;
         if (remoteTopics.length > 0) setTopics(remoteTopics);
         if (remoteLessons.length > 0) {
@@ -99,6 +104,15 @@ export default function Home() {
     window.setTimeout(() => setNotice(""), 4000);
   }
 
+  async function persistLesson(lesson: Lesson) {
+    const response = await fetch("/api/lessons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(lesson),
+    });
+    if (!response.ok) throw new Error("Lesson could not be saved to MongoDB.");
+  }
+
   async function generateTask() {
     if (enabledTopics.length === 0) {
       setView("topics");
@@ -120,7 +134,7 @@ export default function Home() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Generation failed");
-      const lesson = data.lesson as Lesson;
+      const lesson = normalizeLesson(data.lesson as Lesson);
       setLessons((previous) => [lesson, ...previous.filter((item) => item.id !== lesson.id)]);
       setActiveLesson(lesson);
       setView("home");
@@ -155,6 +169,28 @@ export default function Home() {
   function checkRecall() {
     if (!activeLesson) return;
     setRecallResult(compareRecall(activeLesson.paragraph, recallText));
+  }
+
+  async function setLessonStatus(status: LessonStatus) {
+    if (!activeLesson || activeLesson.status === status) return;
+
+    const previousLesson = activeLesson;
+    const updatedLesson: Lesson = {
+      ...activeLesson,
+      status,
+      statusUpdatedAt: new Date().toISOString(),
+    };
+    setActiveLesson(updatedLesson);
+    setLessons((previous) => previous.map((lesson) => lesson.id === updatedLesson.id ? updatedLesson : lesson));
+
+    try {
+      await persistLesson(updatedLesson);
+      showNotice(status === "memorized" ? "Marked as memorized and saved." : "Marked as skipped and saved.");
+    } catch {
+      setActiveLesson(previousLesson);
+      setLessons((previous) => previous.map((lesson) => lesson.id === previousLesson.id ? previousLesson : lesson));
+      showNotice("The status could not be saved. Check your MongoDB connection and try again.");
+    }
   }
 
   return (
@@ -215,7 +251,7 @@ export default function Home() {
               <div className="task-card-footer"><span className="route-note"><span>⌘</span> {route.length} stops on your route</span><button className="primary-button" onClick={generateTask} disabled={loading}>{loading ? <><span className="spinner" /> Building your palace...</> : <>Give me a task <span>↗</span></>}</button></div>
             </section>
 
-            {activeLesson ? <LessonView lesson={activeLesson} recallText={recallText} setRecallText={setRecallText} recallResult={recallResult} checkRecall={checkRecall} /> : <EmptyState onGenerate={generateTask} />}
+            {activeLesson ? <LessonView lesson={activeLesson} recallText={recallText} setRecallText={setRecallText} recallResult={recallResult} checkRecall={checkRecall} setLessonStatus={setLessonStatus} /> : <EmptyState onGenerate={generateTask} />}
           </>
         )}
       </main>
@@ -231,16 +267,16 @@ function TopicsView({ topics, toggleTopic, newTopic, setNewTopic, addTopic, rout
 }
 
 function LibraryView({ lessons, onSelect }: { lessons: Lesson[]; onSelect: (lesson: Lesson) => void }) {
-  return <div className="page-view"><div className="page-heading"><div><p className="eyebrow">YOUR MEMORY ARCHIVE</p><h1>Lesson library</h1><p>Every paragraph you&apos;ve placed, ready to walk again.</p></div><div className="library-total"><strong>{lessons.length.toString().padStart(2, "0")}</strong><span>lessons<br />stored</span></div></div>{lessons.length === 0 ? <div className="empty-library"><div>✦</div><h2>Your archive is quiet.</h2><p>Generate your first task and it will live here.</p></div> : <div className="library-grid">{lessons.map((lesson, index) => <button className="library-card" key={lesson.id} onClick={() => onSelect(lesson)}><div className="library-card-top"><span className="library-index">{String(index + 1).padStart(2, "0")}</span><span className="library-topic">{lesson.topic}</span></div><h2>{lesson.title}</h2><p>{lesson.paragraph}</p><div className="library-card-bottom"><span>{lesson.chunks.length} palace stops</span><span>{new Date(lesson.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })} ↗</span></div></button>)}</div>}</div>;
+  return <div className="page-view"><div className="page-heading"><div><p className="eyebrow">YOUR MEMORY ARCHIVE</p><h1>Lesson library</h1><p>Every paragraph you&apos;ve placed, ready to walk again.</p></div><div className="library-total"><strong>{lessons.length.toString().padStart(2, "0")}</strong><span>lessons<br />stored</span></div></div>{lessons.length === 0 ? <div className="empty-library"><div>✦</div><h2>Your archive is quiet.</h2><p>Generate your first task and it will live here.</p></div> : <div className="library-grid">{lessons.map((lesson, index) => <button className="library-card" key={lesson.id} onClick={() => onSelect(lesson)}><div className="library-card-top"><span className="library-index">{String(index + 1).padStart(2, "0")}</span><span className="library-topic">{lesson.topic}</span></div><h2>{lesson.title}</h2><p>{lesson.paragraph}</p><div className="library-card-bottom"><span>{lesson.chunks.length} palace stops</span><span className={`library-status ${lesson.status}`}>{lesson.status === "memorized" ? "✓ Memorized" : lesson.status === "skipped" ? "↷ Skipped" : "○ Pending"}</span></div></button>)}</div>}</div>;
 }
 
 function EmptyState({ onGenerate }: { onGenerate: () => void }) {
   return <section className="empty-state"><div className="empty-icon">✦</div><p className="card-kicker">YOUR FIRST WALK</p><h2>No active lesson yet.</h2><p>Generate a task above to receive a paragraph, five memory scenes, and an exact-recall drill.</p><button className="text-button" onClick={onGenerate}>Start my first walk <span>→</span></button></section>;
 }
 
-function LessonView({ lesson, recallText, setRecallText, recallResult, checkRecall }: { lesson: Lesson; recallText: string; setRecallText: (value: string) => void; recallResult: RecallResult | null; checkRecall: () => void }) {
+function LessonView({ lesson, recallText, setRecallText, recallResult, checkRecall, setLessonStatus }: { lesson: Lesson; recallText: string; setRecallText: (value: string) => void; recallResult: RecallResult | null; checkRecall: () => void; setLessonStatus: (status: LessonStatus) => void }) {
   const [tab, setTab] = useState<"map" | "prompt" | "recall">("map");
-  return <section className="lesson-section"><div className="lesson-header"><div><div className="lesson-meta"><span className="lesson-topic">{lesson.topic}</span><span>·</span><span>5 stops</span><span>·</span><span>{lesson.demo ? "Demo lesson" : "Gemini lesson"}</span></div><h2>{lesson.title}</h2></div><span className="saved-label">✓ Saved to library</span></div><div className="lesson-tabs"><button className={tab === "map" ? "lesson-tab active" : "lesson-tab"} onClick={() => setTab("map")}>01 <span>Route map</span></button><button className={tab === "prompt" ? "lesson-tab active" : "lesson-tab"} onClick={() => setTab("prompt")}>02 <span>Prompt sheet</span></button><button className={tab === "recall" ? "lesson-tab active" : "lesson-tab"} onClick={() => setTab("recall")}>03 <span>Exact recall</span></button></div>{tab === "map" && <RouteMap lesson={lesson} />}{tab === "prompt" && <PromptSheet lesson={lesson} />}{tab === "recall" && <RecallPractice recallText={recallText} setRecallText={setRecallText} recallResult={recallResult} checkRecall={checkRecall} />}</section>;
+  return <section className="lesson-section"><div className="lesson-header"><div><div className="lesson-meta"><span className="lesson-topic">{lesson.topic}</span><span>·</span><span>5 stops</span><span>·</span><span>{lesson.demo ? "Demo lesson" : "Gemini lesson"}</span></div><h2>{lesson.title}</h2></div><span className="saved-label">✓ Saved to library</span></div><div className="lesson-status-card"><div><span className="card-kicker">TASK CHECK-IN</span><h3>Did you memorize this task?</h3><p>Record what happened so your library stays honest.</p></div><div className="status-actions"><button className={lesson.status === "memorized" ? "status-button memorized selected" : "status-button memorized"} onClick={() => setLessonStatus("memorized")}>✓ <span>Memorized</span></button><button className={lesson.status === "skipped" ? "status-button skipped selected" : "status-button skipped"} onClick={() => setLessonStatus("skipped")}>↷ <span>Skipped</span></button></div></div><div className="lesson-tabs"><button className={tab === "map" ? "lesson-tab active" : "lesson-tab"} onClick={() => setTab("map")}>01 <span>Route map</span></button><button className={tab === "prompt" ? "lesson-tab active" : "lesson-tab"} onClick={() => setTab("prompt")}>02 <span>Prompt sheet</span></button><button className={tab === "recall" ? "lesson-tab active" : "lesson-tab"} onClick={() => setTab("recall")}>03 <span>Exact recall</span></button></div>{tab === "map" && <RouteMap lesson={lesson} />}{tab === "prompt" && <PromptSheet lesson={lesson} />}{tab === "recall" && <RecallPractice recallText={recallText} setRecallText={setRecallText} recallResult={recallResult} checkRecall={checkRecall} />}</section>;
 }
 
 function RouteMap({ lesson }: { lesson: Lesson }) {
